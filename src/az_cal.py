@@ -12,6 +12,8 @@ from obspy.core import UTCDateTime
 import logging 
 from datetime import datetime
 from pathlib import Path
+import utils 
+import warnings 
 
 
 def waveforms(start, end, args):
@@ -20,6 +22,7 @@ def waveforms(start, end, args):
     st_disp = st.copy()
     st_disp.remove_response(output='DISP')
     return st_disp
+
 
 def uvw2enz(st):
     if len(st) != 3:
@@ -69,6 +72,7 @@ def rotate(c1,c2,a):
 
 
 def calculate_baz(events, args): 
+    baz_angles = {}
     for event, values in events.items(): 
         logger.info("*"*30)
         logger.info(f"Calculating for event {event}")
@@ -110,7 +114,7 @@ def calculate_baz(events, args):
 
         tval = np.array(tvall) 
         mina = alpha[np.argmin(tval)]
-
+        baz_angles[event] = mina 
         energy_guess = tval[np.where(alpha == mina)]
         if 'baz' in values: 
             logger.info(f"Calculated Baz: {mina} or {mina-180}. Reported Baz: {values['baz']}")
@@ -120,8 +124,121 @@ def calculate_baz(events, args):
         else: 
             logger.info(f"Calculated Baz: {mina} or {mina-180}")
             logger.info(f"Energy at cal angle: {energy_guess}")
+        
+        # Rotate the s-wave and plot 
+        hhe = stS[0].data
+        hhn = stS[1].data
+        rotation = 180 + mina if mina > 0 else 360 - mina 
+        hhT,hhR = rotate(hhe,hhn, rotation)
+
+        streamRT = stS.copy()
+        streamRT[0].data = hhT
+        streamRT[1].data = hhR
+        streamRT[0].stats.component = 'T'
+        streamRT[1].stats.component = 'R'
+        filename3 = EXP_DIR / 'plots' / f'{args.model}_depth{args.depth}_{event}_swave_rotated_{rotation}.png'
+        streamRT.plot(outfile=filename3)
+
+    return baz_angles
 
 
+def azdelt(deld, az):
+    """
+    Compute destination lat,lon, given a starting lat,lon, bearing (azimuth), and a distance to travel
+    Travel is along a great circle.
+    IN:  lat1, lon1: lattitude na dlongitude of starting point
+     deld and az: distance and azimuth (both in degrees) (azimuth is measured clockwise from N)
+     OUT: lat2, lon2 : latitude and longitude of destination point (in degrees)
+    """
+
+    teta1 = np.radians(4.5024)
+    fi1 = np.radians(135.6234)
+    delta = np.radians(deld)
+    azimuth = np.radians(az)
+
+    if teta1 > 0.5*np.pi or teta1 < -0.5*np.pi:
+       print('error, non-existent latitude')
+       return 0,0
+
+    if delta < 0.:
+       print('error, non-existent delta')
+       return 0,0
+
+    term1 = np.cos(delta)*np.sin(fi1)*np.cos(teta1)
+    factor2 = np.sin(delta)*np.cos(azimuth)*np.sin(teta1)
+
+    term2 = factor2*np.sin(fi1)
+    factor3 = np.sin(delta)*np.sin(azimuth)
+
+    term3 = factor3*np.cos(fi1)
+    teller = term1 - term2 + term3
+
+    term1 = np.cos(delta)*np.cos(fi1)*np.cos(teta1)
+    term2 = factor2*np.cos(fi1)
+    term3 = factor3*np.sin(fi1)
+    rnoemer = term1 - term2 - term3
+
+    fi2 = np.arctan2(teller, rnoemer)
+
+    term1 = np.cos(delta)*np.sin(teta1)
+    term2 = np.sin(delta)*np.cos(azimuth)*np.cos(teta1)
+    som = term1 + term2
+    teta2 = np.arcsin(som)
+
+    return np.degrees(teta2), np.degrees(fi2)
+
+
+def deltaz(deta2, di2):
+    '''
+    IN: long1, lat1, long2, lat2
+    OUT: distance in degrees, azimuth to go from point 1 to point 2 and azimuth to go from point 2 to point 1
+    '''
+
+    teta1 = np.radians(4.5024)
+    fi1 = np.radians(135.6234)
+    teta2 = np.radians(deta2)
+    fi2 = np.radians(di2)
+
+    c1 = np.cos(teta1); c2 = np.cos(teta2)
+    s1 = np.sin(teta1); s2 = np.sin(teta2)
+    c21 = np.cos(fi2-fi1); s21 = np.sin(fi2-fi1)
+    som  = s1*s2 + c21*c1*c2
+
+    delta = np.arccos(som)
+
+    teller = c2*s21
+    rnoemer =  s2*c1 - c2*s1*c21
+    azimuth = np.arctan2(teller,rnoemer)
+    numerator = -s21*c1
+    denominator =  s1*c2 - c1*s2*c21
+    baz = np.arctan2(numerator, denominator)
+
+    return np.degrees(delta), np.degrees(azimuth), np.degrees(baz)
+
+
+def calculate_az(baz_angles): 
+    event_distances = utils.load_file(EXP_DIR / 'events' / f'{args.model}_depth{args.depth}_distances.pkl')
+    event_results = {}
+    for event, mina in baz_angles.items(): 
+        logger.info("*"*30)
+
+        if event in event_distances:
+            distance = event_distances[event] 
+            lat, lon = azdelt(distance, mina)
+            dist, bAz, az = deltaz(lat, lon)
+            logger.info(f"Event: {event}")
+            logger.info(f"Latitude {lat} : Longitude: {lon}")
+            logger.info(f"Distance in degrees: {dist}")
+            logger.info(f"bAz in degrees: {bAz}")
+            logger.info(f"az in degrees: {az}")
+            event_results[event] = {'latitude': lat, 'longitude': lon, 'distance': dist, 'baz': bAz, 'az': az}
+        else: 
+            warnings.warn(f"Event {event} not found in distances dict. Skipping this event") 
+            continue 
+    
+    utils.save_file(EXP_DIR / 'events' / f'{args.model}_depth{args.depth}_events_results.pkl', event_results)
+              
+              
 if __name__ == '__main__': 
     parser = argparse.ArgumentParser() 
     # Obspy Parameters 
@@ -181,5 +298,5 @@ if __name__ == '__main__':
     else: 
         events = {args.ename: {'start': args.start, 'end': args.end}}
     
-    calculate_baz(events, args)
-  
+    baz_angles = calculate_baz(events, args)
+    calculate_az(baz_angles)    

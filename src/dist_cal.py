@@ -74,7 +74,7 @@ def distplot(events, args):
     filename = EXP_DIR / 'plots' / f'{args.model}_depth{args.depth}_distances.png'
     fig.savefig(filename)
 
-    filename = EXP_DIR / 'events' / f'{args.model}_depth{args.depth}_events.pkl'
+    filename = EXP_DIR / 'events' / f'{args.model}_depth{args.depth}_distances.pkl'
     utils.save_file(filename, distances_dict)
 
     return diff, dist_ls
