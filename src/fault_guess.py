@@ -10,6 +10,8 @@ from datetime import datetime
 import utils 
 import json 
 import os 
+from tqdm import tqdm
+from itertools import product 
 
 
 def azdp(v):
@@ -120,7 +122,7 @@ def getplanes(xm):
     return 3*tr,clvd, m0,(azt,dpt),(azn,dpn),(azp, dpp), (st1,dip1,rake1), (st2,dip2,rake2)
 
 
-def Rpattern(fault,azimuth,incidence_angles):
+def Rpattern(faults, azimuth, incidence_angles):
     """
     Calculate predicted amplitudes of P, SV, and SH waves.
     IN: fault = [strike, dip, rake]
@@ -138,13 +140,13 @@ def Rpattern(fault,azimuth,incidence_angles):
     (c) 2020 Suzan van der Lee
     """
 
-    strike,dip,rake = fault
-    a = azimuth; rela = strike - azimuth
-    sinlam = np.sin(np.radians(rake))
-    coslam = np.cos(np.radians(rake))
-    sind = np.sin(np.radians(dip))
-    cosd = np.cos(np.radians(dip))
-    cos2d = np.cos(np.radians(2*dip))
+    strikes, dips, rakes = faults[:, 0], faults[:, 1], faults[:, 2]
+    a = azimuth; rela = strikes - azimuth
+    sinlam = np.sin(np.radians(rakes))
+    coslam = np.cos(np.radians(rakes))
+    sind = np.sin(np.radians(dips))
+    cosd = np.cos(np.radians(dips))
+    cos2d = np.cos(np.radians(2*dips))
     sinrela = np.sin(np.radians(rela))
     cosrela = np.cos(np.radians(rela))
     sin2rela = np.sin(np.radians(2*rela))
@@ -177,40 +179,25 @@ def getamp(azimuth, strike, dip, rake, rayp, mod, depth, Pvelz, Svelz):
             ip, ij = exit angles (???)
     # (c) 2021 Madelyn Sita
     """
-    # define empty lists
-    strike_ls = []; dip_ls = []; rake_ls = []
-    P_ls = []; SH_ls = []; SV_ls = []
+    
+    scalefactor = (Pvelz/Svelz)**3
+    iP = np.degrees(np.arcsin(Pvelz*rayp[0]/(radius-depth)))
+    jS = np.degrees(np.arcsin(Svelz*rayp[1]/(radius-depth)))
 
-    # loop over fault plane combinations
-    for st in strike:
-        for dp in dip:
-            for rk in rake:
-                strike_ls.append(st); dip_ls.append(dp); rake_ls.append(rk)
-
-                # define single fault for calculations
-                fault = [st, dp, rk]
-
-                # calculating exit angles using the models velocity @ depth & ray parameters
-                # radius should be the radius @ depth
-                iP = np.degrees(np.arcsin(Pvelz*rayp[0]/(radius-depth)))
-                jS = np.degrees(np.arcsin(Svelz*rayp[1]/(radius-depth)))
-
-                # calculating amplitudes
-                P,iSV,iSH = Rpattern(fault, azimuth, [iP, jS])
-                scalefactor = (Pvelz/Svelz)**3
-                SV,SH = iSV*scalefactor, iSH*scalefactor
-                P_ls.append(P); SH_ls.append(SH); SV_ls.append(SV)
+    sdr = np.array(list(product(strike, dip, rake)))
+    P_arr, iSV, iSH = Rpattern(sdr, azimuth, [iP, jS])
+    SV_arr, SH_arr = iSV*scalefactor, iSH*scalefactor
 
     # creating dataframe
     data = {
             'Model': mod,
             'Depth': depth,
-            'Strike': strike_ls,
-            'Dip': dip_ls,
-            'Rake': rake_ls,
-            'P': P_ls,
-            'SV': SV_ls,
-            'SH': SH_ls
+            'Strike': sdr[:, 0],
+            'Dip': sdr[:, 1],
+            'Rake': sdr[:, 2],
+            'P': P_arr,
+            'SV': SV_arr,
+            'SH': SH_arr
             }
 
     df = pd.DataFrame(data, columns = ['Model','Depth','Strike', 'Dip', 'Rake', 'P', 'SV', 'SH'])
@@ -245,7 +232,7 @@ def autofault(df, depth, mod, obsP, obsSV, obsSH, errP, errSV, errSH):
                      eobs[1]**2*(1-norm[1]**2) + \
                      eobs[2]**2*(1-norm[2]**2))/3)/vobslength
     eca = np.arctan(eca_ls)
-    print('tolerance (cut-off value): ', eca, 'radians')
+    print('\ntolerance (cut-off value): ', eca, 'radians')
 
     xd = 5*df['P']
     yd = df['SV']
@@ -324,61 +311,59 @@ def predictamp(data,az,rayp,print_state=False):
 
 
 def eventoutput(events_results, events_amps, args):
-    n = 0
-    for mod in args.mod_list:
-        taup_model = TauPyModel(model=str(EXP_DIR / 'models' / mod))
-        for depth in [15, 35, 55]:
-            if mod == 'NewGudkova':
-                if depth <= 203 and depth > 50:
-                    Pvelz = 7.45400; Svelz = 4.21600
-                elif depth <= 50 and depth > 42:
-                    Pvelz = 7.12500; Svelz = 4.00300    #rounded
-                elif depth <= 42 and depth > 21:
-                    Pvelz = 7.13900; Svelz = 4.01900
-                elif depth <=21 and depth > 16:
-                    Pvelz = 7.14300; Svelz = 4.02300
-                elif depth <= 16 and depth > 10:
-                    Pvelz = 7.15000; Svelz = 4.03000    #rounded
+    mod, depth = args.model, args.depth 
 
-            elif mod == 'TAYAK':
-                if depth <= 77 and depth > 10:
-                    Pvelz = 5.84666; Svelz = 3.28116
-                elif depth <= 10 and depth >1:
-                    Pvelz = 4.95225; Svelz = 2.78097
+    taup_model = TauPyModel(model=str(EXP_DIR / 'models' / mod))
 
-            elif mod == 'Combined':
-                if depth <= 203 and depth > 50:
-                    Pvelz = 7.45400; Svelz = 4.21600
-                elif depth <= 50 and depth > 22:
-                    Pvelz = 7.12700; Svelz = 4.00200
-                elif depth <= 22 and depth > 8.6:
-                    Pvelz = 5.14700; Svelz = 2.73900
-                elif depth <= 8.6 and depth > 0:
-                    Pvelz = 3.50400; Svelz = 1.77100
+    with open(DATA_PATH / 'models' / f'{mod}.nd') as f:
+        data = f.readlines()
+        model_params = []
+        for line in data: 
+            vals = line.strip().split()
+            if len(vals) != 1: 
+                # vals is of the form - depth, Pvelz, Svelz, density
+                arr = list(map(float, vals)) 
+                model_params.append(arr) 
+        
+    model_params = np.array(model_params)
+
+    depth = args.depth 
+    index = np.searchsorted(model_params[:, 0], depth) 
+
+    # Calculate Pvelz and Svelz based on model and depth 
+    if index == 0 or index == len(model_params): 
+        Pvelz = model_params[index, 0]
+        Svelz = model_params[index, 1] 
+    else: 
+        prev_d = model_params[index-1, 0]
+        next_d = model_params[index, 0]
+
+        prev_p = model_params[index-1, 1]
+        next_p = model_params[index, 1]
+
+        prev_s = model_params[index-1, 2]
+        next_s = model_params[index, 2]
+
+        Pvelz = prev_p + (next_p - prev_p)/(next_d - prev_d)*(depth - prev_d)
+        Svelz = prev_s + (next_s - prev_s)/(next_d - prev_d)*(depth - prev_d)
 
 
-            for event, event_vals in events_results.items(): 
-                if event in events_amps: 
-                    print("*"*30)
-                    print(f"Model: {mod},  Depth: {depth}, Pvelz: {Pvelz}, Svelz: {Svelz}")
-                    print(f"Fault guessing for {event}")
-                    Pp, Sp, Pa, Sa = eventbuild(taup_model=taup_model, event=event, dist=event_vals['distance'], depth=depth)
+    for event, event_vals in tqdm(events_results.items()): 
+        if event in events_amps: 
+            logger.info("*"*30)
+            logger.info(f"Model: {mod},  Depth: {depth}, Pvelz: {Pvelz}, Svelz: {Svelz}")
+            logger.info(f"Fault guessing for {event}")
+            Pp, Sp, Pa, Sa = eventbuild(taup_model=taup_model, event=event, dist=event_vals['distance'], depth=depth)
 
-                    df, Pe, Se = getamp(azimuth=event_vals['az'], strike=strike_rang, dip=dip_rang, rake=rake_rang, rayp=[Pp, Sp], 
-                                        mod=mod, depth=depth, Pvelz=Pvelz, Svelz=Svelz)
+            df, Pe, Se = getamp(azimuth=event_vals['az'], strike=strike_rang, dip=dip_rang, rake=rake_rang, rayp=[Pp, Sp], 
+                                mod=mod, depth=depth, Pvelz=Pvelz, Svelz=Svelz)
 
-                    print(f"Exit Angles: {Pe}, {Se}")
-                    df = autofault(df, depth, mod, **events_amps[event])
-                    if n == 0:
-                        os.makedirs(EXP_DIR / 'events' / f'{event}', exist_ok=True)
-                        df.to_csv(EXP_DIR / 'events' / f'{event}' /  f'{event}.csv', header=True)
-                    else:
-                        df.to_csv(EXP_DIR / 'events' / f'{event}' / f'{event}.csv', mode='a', header=False)
-                else: 
-                    print(f"Skipping {event}: Not found in events amps dict")
-
-            n+=1
-
+            logger.info(f"Exit Angles: {Pe}, {Se}")
+            df = autofault(df, depth, mod, **events_amps[event])
+            os.makedirs(EXP_DIR / 'events' / f'{event}', exist_ok=True)
+            df.to_csv(EXP_DIR / 'events' / f'{event}' /  f'{event}_{mod}_depth{depth}.csv', header=True)
+        else: 
+            logger.info(f"Skipping {event}: Not found in events amps dict")
 
 
 if __name__ == '__main__': 
@@ -413,8 +398,8 @@ if __name__ == '__main__':
                                 }
                         }
                         """)
-    parser.add_argument("-m", '--mod_list',  nargs='+', default=['NewGudkova', 'Combined', 'TAYAK'], 
-                        help="List of mars models to use for fault guessing")
+    # parser.add_argument("-m", '--mod_list',  nargs='+', default=['NewGudkova', 'Combined', 'TAYAK'], 
+    #                     help="List of mars models to use for fault guessing")
 
     args = parser.parse_args()
 
@@ -428,7 +413,6 @@ if __name__ == '__main__':
     logger.info(f"{time_stamp}: Running {Path(__file__).name}")
     logger.info(f"{args.__dict__}")
 
-
     eps = 1e-6
     rad = 180/np.pi
     halfpi = 0.5*np.pi
@@ -436,7 +420,6 @@ if __name__ == '__main__':
 
     # ---------- MARS -----------------
     radius = args.radius 
-
 
     # ------ FAULT PLANE LISTS -------    
     strike_rang = list(range(0, 360, 2))

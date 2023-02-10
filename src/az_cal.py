@@ -225,7 +225,8 @@ def calculate_az(baz_angles):
         if event in event_distances:
             distance = event_distances[event] 
             lat, lon = azdelt(distance, mina)
-            dist, bAz, az = deltaz(lat, lon)
+            # deltaz is returing dist, az, baZ but it's from lander to event, so we reverse it after calling the function (to get it from event to lander)
+            dist, bAz, az = deltaz(lat, lon)  
             logger.info(f"Event: {event}")
             logger.info(f"Latitude {lat} : Longitude: {lon}")
             logger.info(f"Distance in degrees: {dist}")
