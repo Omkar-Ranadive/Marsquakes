@@ -189,6 +189,7 @@ python fault_guess.py --exp_dir results --file events_amps.txt --model NewGudkov
 ```
 python beach_plot.py --exp_dir results --model NewGudkova --depth 35
 ```
+* The beach ball plots are saved under experiments/exp_dir/plots/beach_plots directory. 
 
 ## References 
 This repository is an updated and modular version of [Sita Marsquakes 2020](https://github.com/maddysita-17/Sita_Marsquakes2020) repository. 
