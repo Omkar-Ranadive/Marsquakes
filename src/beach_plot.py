@@ -60,9 +60,6 @@ def alphabeach(event, df, c='b'):
 
     ax3.autoscale_view(tight=False, scalex=True, scaley=True)
 
-
-    SAVE_PATH = EXP_DIR / 'plots' / 'beach'
-    os.makedirs(SAVE_PATH, exist_ok=True)
     fig1.savefig(SAVE_PATH / f'{args.model}_depth{args.depth}_{event}_CS.png', bbox_inches='tight')
     fig2.savefig(SAVE_PATH / f'{args.model}_depth{args.depth}_{event}_CS_super.png', bbox_inches='tight')
     fig3.savefig(SAVE_PATH / f'{args.model}_depth{args.depth}_{event}_best.png', bbox_inches='tight')
@@ -92,6 +89,9 @@ if __name__ == '__main__':
     logger.info("*"*50)
     logger.info(f"{time_stamp}: Running {Path(__file__).name}")
     logger.info(f"{args.__dict__}")
+
+    SAVE_PATH = EXP_DIR / 'plots' / 'beach_plots'
+    os.makedirs(SAVE_PATH, exist_ok=True)
 
     events_results = utils.load_file(EXP_DIR / 'events' /  f'{args.model}_depth{args.depth}_events_results.pkl')
     for event, values in events_results.items(): 

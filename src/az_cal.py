@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 import utils 
 import warnings 
+import os 
 
 
 def waveforms(start, end, args):
@@ -91,8 +92,8 @@ def calculate_baz(events, args):
         # Error calculation, noise estimation
         stP2 = stf.slice(starttime=start-10,endtime=start+10)
         stS2 = stf.slice(starttime=end-10, endtime=end+10)
-        filename1 = EXP_DIR / 'plots' / f'{args.model}_depth{args.depth}_{event}_pwave.png'
-        filename2 = EXP_DIR / 'plots' / f'{args.model}_depth{args.depth}_{event}_swave.png'
+        filename1 = EXP_DIR / 'plots' / 'wave_plots' / f'{args.model}_depth{args.depth}_{event}_pwave.png'
+        filename2 = EXP_DIR / 'plots' / 'wave_plots' / f'{args.model}_depth{args.depth}_{event}_swave.png'
 
         stP2.plot(outfile=filename1)
         stS2.plot(outfile=filename2)
@@ -136,7 +137,7 @@ def calculate_baz(events, args):
         streamRT[1].data = hhR
         streamRT[0].stats.component = 'T'
         streamRT[1].stats.component = 'R'
-        filename3 = EXP_DIR / 'plots' / f'{args.model}_depth{args.depth}_{event}_swave_rotated_{rotation}.png'
+        filename3 = EXP_DIR / 'plots' / 'wave_plots' / f'{args.model}_depth{args.depth}_{event}_swave_rotated_{rotation}.png'
         streamRT.plot(outfile=filename3)
 
     return baz_angles
@@ -299,5 +300,8 @@ if __name__ == '__main__':
     else: 
         events = {args.ename: {'start': args.start, 'end': args.end}}
     
+    
+    os.makedirs(EXP_DIR / "plots" / 'wave_plots', exist_ok=True)
+
     baz_angles = calculate_baz(events, args)
     calculate_az(baz_angles)    

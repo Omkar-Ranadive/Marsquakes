@@ -14,7 +14,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser() 
     parser.add_argument("-m", '--mod_list',  nargs='+', default=['Gudkova', 'Combined', 'NewGudkova', 'TAYAK'], 
                         help="""List of models to be converted to taup model format""")
-    parser.add_argument("--exp_dir", default='results', type=str)
+    parser.add_argument("--exp_dir", required=True, type=str)
 
     # Parameters related to ray plots 
     parser.add_argument("--rayplot", default=False, action=argparse.BooleanOptionalAction, 
@@ -58,6 +58,8 @@ if __name__ == '__main__':
 
     # Plot ray paths for the taup models 
     if args.rayplot: 
+        os.makedirs(EXP_DIR / "plots" / 'rayplots', exist_ok=True)
+
         for model in os.listdir(EXP_DIR / 'models'): 
             model_name = os.path.splitext(model)[0] 
             if model_name in args.mod_list: 
@@ -71,7 +73,7 @@ if __name__ == '__main__':
                     ax = arrivals.plot_rays(plot_type=args.plot_type, fig=fig, show=False, legend=True)
                     ax.set_title(f'{model_name}')
                     filename = f'{model_name}_{args.plot_type}_depth{args.source_depth}_deg{dist_deg}.png'
-                    fig.savefig(EXP_DIR / 'plots' / filename) 
+                    fig.savefig(EXP_DIR / 'plots' / 'rayplots' / filename) 
                     plt.close(fig)
 
 

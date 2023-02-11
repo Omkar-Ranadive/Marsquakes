@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from obspy.core import UTCDateTime
 import utils 
+import os 
 
 
 def truncate(number, decimals=0):
@@ -71,7 +72,7 @@ def distplot(events, args):
         # ax.text(dist_ls[diff_index]-1, 0, (event, actual_dist), size='x-small', rotation=90)
 
     plt.legend()
-    filename = EXP_DIR / 'plots' / f'{args.model}_depth{args.depth}_distances.png'
+    filename = EXP_DIR / 'plots' / 'distance_plots' / f'{args.model}_depth{args.depth}_distances.png'
     fig.savefig(filename)
 
     filename = EXP_DIR / 'events' / f'{args.model}_depth{args.depth}_distances.pkl'
@@ -123,6 +124,7 @@ if __name__ == '__main__':
     logger.info("*"*50)
     logger.info(f"{time_stamp}: Running {Path(__file__).name}")
     logger.info(f"{args.__dict__}")
+    os.makedirs(EXP_DIR / "plots" / 'distance_plots', exist_ok=True)
 
     distplot(events, args)
 
