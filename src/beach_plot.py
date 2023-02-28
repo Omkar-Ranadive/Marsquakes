@@ -22,7 +22,7 @@ import sys
 import os 
 
 
-def alphabeach(event, df, c='b'):
+def alphabeach(event, df, n=50, c='b'):
     fig1, ax1 = plt.subplots(subplot_kw={'aspect': 'equal'})
     fig2, ax2 = plt.subplots(subplot_kw={'aspect': 'equal'})
     fig3, ax3 = plt.subplots(subplot_kw={'aspect': 'equal'})
@@ -39,8 +39,8 @@ def alphabeach(event, df, c='b'):
 
     for index, rows in df.iterrows():
         f = [rows.Strike, rows.Dip, rows.Rake]
-        x = 210 * (index % 30)
-        y = 210 * (index // 30)
+        x = 210 * (index % 10)
+        y = 210 * (index // 10)
 
         if index == 0: 
             ax3.set_title(f"{event}: Best fit - Strike {rows.Strike} Dip: {rows.Dip} Rake: {rows.Rake}")
@@ -49,7 +49,9 @@ def alphabeach(event, df, c='b'):
 
         collection1  = beach(f, xy=(x, y), facecolor=c, alpha=rows.Normalized)
         collection2 = beach(f, xy=(0, 0), facecolor=c, alpha=rows.Normalized)
-        ax1.add_collection(collection1)
+        # Only plot top n solution in case of solution set plot (for readibility)
+        if index < n: 
+            ax1.add_collection(collection1)
         ax2.add_collection(collection2)
     
     ax1.autoscale_view(tight=False, scalex=True, scaley=True)

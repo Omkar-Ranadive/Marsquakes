@@ -12,6 +12,8 @@ import json
 import os 
 from tqdm import tqdm
 from itertools import product 
+import sys 
+import math 
 
 
 def azdp(v):
@@ -172,7 +174,7 @@ def getamp(azimuth, strike, dip, rake, rayp, mod, depth, Pvelz, Svelz):
     """
     INPUT:  az = azimuth in degrees from the event to the lander
             st, dp, rk = strike dip rake from 3 separate lists
-            Pp, Sp = ray paramters calculated from the model in obspy
+            iP, jS = ray paramters calculated from the model in obspy
             Pvelz, Svelz = velocity @ depth from model
             radius = predefined radius of planet
     OUTPUT: df = dataframe containing synthetic amplitudes
@@ -181,11 +183,11 @@ def getamp(azimuth, strike, dip, rake, rayp, mod, depth, Pvelz, Svelz):
     """
     
     scalefactor = (Pvelz/Svelz)**3
-    iP = np.degrees(np.arcsin(Pvelz*rayp[0]/(radius-depth)))
-    jS = np.degrees(np.arcsin(Svelz*rayp[1]/(radius-depth)))
+    # iP = np.degrees(np.arcsin(Pvelz*rayp[0]/(radius-depth)))
+    # jS = np.degrees(np.arcsin(Svelz*rayp[1]/(radius-depth)))
 
     sdr = np.array(list(product(strike, dip, rake)))
-    P_arr, iSV, iSH = Rpattern(sdr, azimuth, [iP, jS])
+    P_arr, iSV, iSH = Rpattern(sdr, azimuth, rayp)
     SV_arr, SH_arr = iSV*scalefactor, iSH*scalefactor
 
     # creating dataframe
@@ -201,24 +203,26 @@ def getamp(azimuth, strike, dip, rake, rayp, mod, depth, Pvelz, Svelz):
             }
 
     df = pd.DataFrame(data, columns = ['Model','Depth','Strike', 'Dip', 'Rake', 'P', 'SV', 'SH'])
-    return df, iP, jS
+    return df
 
 
 def eventbuild(taup_model, event, dist, depth):
     # (c) 2021 Madelyn Sita
     # determine travel times using obspy
     mtimes = taup_model.get_travel_times(source_depth_in_km=depth, distance_in_degree=dist, phase_list=['P','S'])
+    # rint(help(mtimes[0]))
 
     # ray parameters & incidence angles at the station
     Pp = mtimes[0].ray_param ; Pa = mtimes[0].incident_angle
-
+    iP = mtimes[0].takeoff_angle 
+    jS = mtimes[1].takeoff_angle
     try:
         Sp = mtimes[1].ray_param ; Sa = mtimes[1].incident_angle
     except:
         Sp = 0 ; Sa = 0
         print('Within S-wave shadow zone')
 
-    return Pp, Sp, Pa, Sa
+    return Pp, Sp, Pa, Sa, iP, jS
 
 
 def autofault(df, depth, mod, obsP, obsSV, obsSH, errP, errSV, errSH):
@@ -302,7 +306,7 @@ def autofault(df, depth, mod, obsP, obsSV, obsSH, errP, errSV, errSH):
 def predictamp(data,az,rayp,print_state=False):
     # (c) 2021 Madelyn Sita
     for index, rows in data.iterrows():
-        ampsdf, iP, jS = getamp(az, [rows.Strike], [rows.Dip], [rows.Rake], rayp)
+        ampsdf = getamp(az, [rows.Strike], [rows.Dip], [rows.Rake], rayp)
 
         if print_state ==True:
             print(ampsdf)
@@ -332,8 +336,8 @@ def eventoutput(events_results, events_amps, args):
 
     # Calculate Pvelz and Svelz based on model and depth 
     if index == 0 or index == len(model_params): 
-        Pvelz = model_params[index, 0]
-        Svelz = model_params[index, 1] 
+        Pvelz = model_params[index, 1]
+        Svelz = model_params[index, 2] 
     else: 
         prev_d = model_params[index-1, 0]
         next_d = model_params[index, 0]
@@ -343,9 +347,15 @@ def eventoutput(events_results, events_amps, args):
 
         prev_s = model_params[index-1, 2]
         next_s = model_params[index, 2]
-
-        Pvelz = prev_p + (next_p - prev_p)/(next_d - prev_d)*(depth - prev_d)
-        Svelz = prev_s + (next_s - prev_s)/(next_d - prev_d)*(depth - prev_d)
+        
+        # Default to next p and s values if depth's are the same (to avoid division by zero)
+        if math.isclose(next_d, prev_d): 
+            print(f"Prev depth {prev_d} and next depth {next_d } are the same, defaulting to next p {next_p} and next s {next_s} vals")
+            Pvelz = next_p
+            Svelz = next_s  
+        else: 
+            Pvelz = prev_p + (next_p - prev_p)/(next_d - prev_d)*(depth - prev_d)
+            Svelz = prev_s + (next_s - prev_s)/(next_d - prev_d)*(depth - prev_d)
 
 
     for event, event_vals in tqdm(events_results.items()): 
@@ -353,12 +363,12 @@ def eventoutput(events_results, events_amps, args):
             logger.info("*"*30)
             logger.info(f"Model: {mod},  Depth: {depth}, Pvelz: {Pvelz}, Svelz: {Svelz}")
             logger.info(f"Fault guessing for {event}")
-            Pp, Sp, Pa, Sa = eventbuild(taup_model=taup_model, event=event, dist=event_vals['distance'], depth=depth)
+            Pp, Sp, Pa, Sa, iP, jS = eventbuild(taup_model=taup_model, event=event, dist=event_vals['distance'], depth=depth)
 
-            df, Pe, Se = getamp(azimuth=event_vals['az'], strike=strike_rang, dip=dip_rang, rake=rake_rang, rayp=[Pp, Sp], 
+            df = getamp(azimuth=event_vals['az'], strike=strike_rang, dip=dip_rang, rake=rake_rang, rayp=[iP, jS], 
                                 mod=mod, depth=depth, Pvelz=Pvelz, Svelz=Svelz)
 
-            logger.info(f"Exit Angles: {Pe}, {Se}")
+            logger.info(f"Exit Angles: {iP}, {jS}")
             df = autofault(df, depth, mod, **events_amps[event])
             os.makedirs(EXP_DIR / 'events' / f'{event}', exist_ok=True)
             df.to_csv(EXP_DIR / 'events' / f'{event}' /  f'{event}_{mod}_depth{depth}.csv', header=True)
