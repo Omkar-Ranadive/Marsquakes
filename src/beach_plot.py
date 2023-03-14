@@ -35,34 +35,60 @@ def alphabeach(event, df, n=50, c='b'):
     max_mis = df['Misfit'].max()
     min_mis = df['Misfit'].min()    
 
-    df['Normalized'] = (max_mis - df['Misfit'])/(max_mis-min_mis)
+    # Max-min normalization 
+    # df['Normalized'] = (max_mis - df['Misfit'])/(max_mis-min_mis)
+    
+    # Gaussian normalization 
+    sigma = max_mis 
+    # pref = 1/(sigma*np.sqrt(2*np.pi)) 
+    df['Normalized'] = np.exp(-(np.square(df['Misfit']))/(2*np.square(sigma)))
+
+    # Plot complete solution set, with n figures in each plot 
+    counter = 1
+    num_figs = 0
 
     for index, rows in df.iterrows():
         f = [rows.Strike, rows.Dip, rows.Rake]
-        x = 210 * (index % 10)
-        y = 210 * (index // 10)
+        x = 210 * ((counter-1) % 10)
+        y = 210 * ((counter-1) // 10)
 
-        if index == 0: 
+        # Collection1 is for individual solutions 
+        collection1  = beach(f, xy=(x, y), facecolor=c, alpha=rows.Normalized)
+        ax1.add_collection(collection1)
+
+        # Collection2 is for superimposed solutions 
+        collection2 = beach(f, xy=(0, 0), facecolor=c, alpha=rows.Normalized)
+        ax2.add_collection(collection2)
+
+        # Plot set of n solutions per plot 
+        if counter % n == 0 and index not in (0, len(df)-1): 
+            ax1.autoscale_view(tight=False, scalex=True, scaley=True)
+            ax1.set_title(f"{event}: Complete Solution Set [{index-counter+1}-{index}]")
+            fig1.savefig(SAVE_PATH / f'{args.model}_depth{args.depth}_{event}_CS{num_figs}.png', bbox_inches='tight')
+            plt.close(fig1) 
+            fig1, ax1 = plt.subplots(subplot_kw={'aspect': 'equal'})
+            ax1.axison = False
+            num_figs += 1 
+            counter = 0 
+        # Plot the last remaining set of solutions 
+        elif index == len(df)-1: 
+            ax1.autoscale_view(tight=False, scalex=True, scaley=True)
+            ax1.set_title(f"{event}: Complete Solution Set [{index-counter+1}-{index}]")
+            fig1.savefig(SAVE_PATH / f'{args.model}_depth{args.depth}_{event}_CS{num_figs}.png', bbox_inches='tight')
+        # Create a separate plot for the best solution  
+        elif index == 0: 
             ax3.set_title(f"{event}: Best fit - Strike {rows.Strike} Dip: {rows.Dip} Rake: {rows.Rake}")
             collection = beach(f, xy=(0, 0), facecolor=c, alpha=rows.Normalized)
             ax3.add_collection(collection)
 
-        collection1  = beach(f, xy=(x, y), facecolor=c, alpha=rows.Normalized)
-        collection2 = beach(f, xy=(0, 0), facecolor=c, alpha=rows.Normalized)
-        # Only plot top n solution in case of solution set plot (for readibility)
-        if index < n: 
-            ax1.add_collection(collection1)
-        ax2.add_collection(collection2)
-    
-    ax1.autoscale_view(tight=False, scalex=True, scaley=True)
-    ax1.set_title(f"{event}: Complete Solution Set")
+        counter += 1 
 
+    
     ax2.autoscale_view(tight=False, scalex=True, scaley=True)
     ax2.set_title(f"{event}: Complete Solution Set - Superimposed")
 
     ax3.autoscale_view(tight=False, scalex=True, scaley=True)
 
-    fig1.savefig(SAVE_PATH / f'{args.model}_depth{args.depth}_{event}_CS.png', bbox_inches='tight')
     fig2.savefig(SAVE_PATH / f'{args.model}_depth{args.depth}_{event}_CS_super.png', bbox_inches='tight')
     fig3.savefig(SAVE_PATH / f'{args.model}_depth{args.depth}_{event}_best.png', bbox_inches='tight')
 

@@ -21,7 +21,8 @@ def waveforms(start, end, args):
     st = client.get_waveforms(args.net, args.sta, args.loc, ",".join(args.cl), start-args.adjtime, end+args.adjtime, attach_response=True)
     st.detrend(type='simple')
     st_disp = st.copy()
-    st_disp.remove_response(output='DISP')
+    st_disp.remove_response(pre_filt=[0.006, 0.01, 8, 9.9], water_level=None, zero_mean=False, 
+                            taper=True, taper_fraction=0.01, output='DISP')
     return st_disp
 
 
@@ -74,7 +75,9 @@ def rotate(c1,c2,a):
 
 def calculate_baz(events, args): 
     baz_angles = {}
+    
     for event, values in events.items(): 
+        print(event)
         logger.info("*"*30)
         logger.info(f"Calculating for event {event}")
         start = UTCDateTime(values['start'])
@@ -85,11 +88,29 @@ def calculate_baz(events, args):
         st_z12 = uvw2enz(st_uvw)
 
         stf = st_z12.copy()
-        stf.filter('bandpass', freqmin = 0.125, freqmax = 1.0, corners=4, zerophase=True)
+        stf.filter('bandpass', freqmin=0.125, freqmax=1.0, corners=4, zerophase=True)
+        
         stP = stf.slice(starttime=start-1,endtime=start+2)
-        stS = stf.slice(starttime=end-2, endtime=end+15)
+        stS = stf.slice(starttime=end-2, endtime=end+10)
 
-        # Error calculation, noise estimation
+
+        # Calculate noise tolerance level 
+        st_tols = []
+        scale = 1/args.scale
+        noise_start, noise_end = start-1, start+2 
+        for i in range(args.tol_it):
+            noise_start = noise_start - args.tol_dur 
+            noise_end = noise_end - args.tol_dur
+            stPi = stf.slice(starttime=noise_start, endtime=noise_end) 
+            hhe = scale * stPi[0].data
+            hhn = scale * stPi[1].data
+            st_tols.append(np.dot(hhe, hhe))
+            st_tols.append(np.dot(hhn, hhn))
+
+        tol_level = np.mean(st_tols)
+        logger.info(f"Noise tolerance level: {tol_level}")
+
+        # stP2 and stS2 are used for visualization purposes only 
         stP2 = stf.slice(starttime=start-10,endtime=start+10)
         stS2 = stf.slice(starttime=end-10, endtime=end+10)
         filename1 = EXP_DIR / 'plots' / 'wave_plots' / f'{args.model}_depth{args.depth}_{event}_pwave.png'
@@ -98,47 +119,88 @@ def calculate_baz(events, args):
         stP2.plot(outfile=filename1)
         stS2.plot(outfile=filename2)
 
-        scale = 1/args.scale
         hhe = scale * stP[0].data
         hhn = scale * stP[1].data
 
-        tvall = []
-        alpha = np.arange(0, 360, 1)
+        energies = []
+        angles = np.arange(0, 360, 1)
 
         # calculate Energy on channels oriented in the a direction, for all a in alpha:
         # angle a is relative to orientation of channels 1 and 2.
         # c1 is the x-axis, c2 is the y-axis
-        for a in alpha:
+        for a in angles:
             hhT, hhR = rotate(hhe,hhn,a)
             Tenergy = np.dot(hhT,hhT)
-            tvall.append(Tenergy)
+            energies.append(Tenergy)
 
-        tval = np.array(tvall) 
-        mina = alpha[np.argmin(tval)]
-        baz_angles[event] = mina 
-        energy_guess = tval[np.where(alpha == mina)]
+        energies = np.array(energies) 
+        sol_indices = np.where(energies < tol_level)[0]
+        logger.info(f"Solution angles < noise tolerance level: {sol_indices}")
+        min_angle = np.argmin(energies)
+        min_energy = energies[min_angle]
+        baz_angles[event] = min_angle 
+        energy_reported = None 
         if 'baz' in values: 
-            logger.info(f"Calculated Baz: {mina} or {mina-180}. Reported Baz: {values['baz']}")
-            energy_reported = tval[np.where(alpha == values['baz'])]
+            logger.info(f"Calculated Baz: {min_angle} or {min_angle-180}. Reported Baz: {values['baz']}")
+            angle_reported = int(values['baz'])
+            energy_reported = energies[angle_reported]
             # Angle at which energy is minimized
-            logger.info(f"Energy at cal angle: {energy_guess}, Energy at reported angle {energy_reported}")
+            logger.info(f"Energy at cal angle: {min_energy}, Energy at reported angle {energy_reported}")
         else: 
-            logger.info(f"Calculated Baz: {mina} or {mina-180}")
-            logger.info(f"Energy at cal angle: {energy_guess}")
-        
-        # Rotate the s-wave and plot 
-        hhe = stS[0].data
-        hhn = stS[1].data
-        rotation = 180 + mina if mina > 0 else 360 - mina 
-        hhT,hhR = rotate(hhe,hhn, rotation)
+            logger.info(f"Calculated Baz: {min_angle} or {min_angle-180}")
+            logger.info(f"Energy at cal angle: {min_energy}")
 
-        streamRT = stS.copy()
-        streamRT[0].data = hhT
-        streamRT[1].data = hhR
-        streamRT[0].stats.component = 'T'
-        streamRT[1].stats.component = 'R'
-        filename3 = EXP_DIR / 'plots' / 'wave_plots' / f'{args.model}_depth{args.depth}_{event}_swave_rotated_{rotation}.png'
-        streamRT.plot(outfile=filename3)
+        # Plot the energies 
+        fig1, ax1 = plt.subplots(2, 1, sharex=True, figsize=(15, 10))
+
+        alphas = np.where(np.in1d(angles, sol_indices), 0.6, 0.5)
+        sizes = np.where(np.in1d(angles, sol_indices), 8, 5)
+        colors = np.where(np.in1d(angles, sol_indices), 'orange', 'b')
+
+        ax1[0].scatter(angles, energies, alpha=alphas, s=sizes, c=colors) 
+        ax1[0].hlines(tol_level, np.min(angles), np.max(angles), alpha=0.5, color='k', linestyles='dashed', label='Tolerance Level')
+        ax1[0].vlines(min_angle, np.min(energies), np.max(energies), alpha=0.7, color='r', linestyles='dashed', label='Cal min energy')
+
+        ax1[1].scatter(sol_indices, energies[sol_indices], c='orange', s=10, alpha=0.8, label='Angles < tol')
+        ax1[1].scatter(min_angle, min_energy, c='r', marker='^', s=80, alpha=0.8, label=f'Cal angle: {min_angle}')
+        if energy_reported: 
+            ax1[0].vlines(angle_reported, np.min(energies), np.max(energies), alpha=0.7, color='g', linestyles='dashed', label='Reported min energy')
+            ax1[1].scatter(angle_reported, energy_reported, marker='^', c='g', alpha=0.8, s=80, label=f'Reported angle: {angle_reported}')
+
+        ax1[1].set_xlabel('Angles')
+        ax1[0].set_ylabel('Energy')
+        ax1[1].set_ylabel('Energy')
+        ax1[0].legend()
+        ax1[1].legend()
+        filename3 = EXP_DIR / 'plots' / 'wave_plots' / f'{args.model}_depth{args.depth}_{event}_energies.png'
+        fig1.savefig(filename3, bbox_inches='tight')
+        # Rotate the s-wave and plot 
+        hhe = stS2[0].data
+        hhn = stS2[1].data
+        rotation = 180 + min_angle if min_angle > 0 else 360 - min_angle 
+        hhT, hhR = rotate(hhe, hhn, rotation)
+
+        # Plot the rotated s-wave on the larger slice but mark the smaller slice with vertical lines 
+        fig2, ax2 = plt.subplots(3, 1, sharex=True, figsize=(15, 10))
+        times = [(stS2[0].stats.starttime + t).datetime for t in stS2[0].times()]
+        labels = ['T Component', 'R Component', 'Z Component']
+        for i in range(3): 
+            ymin, ymax = np.min(stS2[i].data), np.max(stS2[i].data) 
+            ax2[i].plot(times, stS2[i].data, label=labels[i], c='k')
+            ax2[i].vlines(stS[i].stats.starttime, ymin, ymax, alpha=0.7, color='r', linestyles='dashed')
+            ax2[i].vlines(stS[i].stats.endtime, ymin, ymax, alpha=0.7, color='r', linestyles='dashed')
+
+        # ax.legend()
+        filename4 = EXP_DIR / 'plots' / 'wave_plots' / f'{args.model}_depth{args.depth}_{event}_swave_rotated_{rotation}.png'
+        fig2.savefig(filename4, bbox_inches='tight')
+
+        plt.close('all')
+        # streamRT = stS.copy()
+        # streamRT[0].data = hhT
+        # streamRT[1].data = hhR
+        # streamRT[0].stats.component = 'T'
+        # streamRT[1].stats.component = 'R'
+        # streamRT.plot(outfile=filename3)
 
     return baz_angles
 
@@ -275,11 +337,23 @@ if __name__ == '__main__':
     parser.add_argument("--adjtime", default=600, type=float, help="Retrieved waveform is of the duration start-adjtime, end+adjtime")
     parser.add_argument("--scale", default=200, type=float, help="Data gets multipled by 1/scale before back azimuth calculation")
     
-    # Model Parameters -
+    # Model Parameters
     parser.add_argument("--model", required=True, type=str, help="Model name used for distance calculation")
     parser.add_argument("--depth", required=True, type=float, help="Source Depth (km) used for distance calculation")
 
+    # Noise Tolerance calculation params 
+    # These two quantities will be used to calculate the noise-tolerance level 
+    parser.add_argument("--tol_dur", default=3, type=float, 
+                        help="Length of slices calculated before the start of p-wave")
+    parser.add_argument("--tol_it", default=3, type=int, help="Number of slices calculated before start of p-wave")
+
+    # Exp Parameters 
     parser.add_argument("--exp_dir", required=True, type=str)
+
+    # Plot params 
+    plt.rcParams['savefig.dpi'] = 300
+    plt.rcParams['axes.titlesize'] = 'large'
+    plt.rcParams['axes.labelsize'] = 'medium'
 
 
     args = parser.parse_args()

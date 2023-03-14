@@ -18,7 +18,7 @@ if __name__ == '__main__':
     parser.add_argument("--dir1", type=str, required=True)
     parser.add_argument("--dir2", type=str, required=True)
     parser.add_argument("--save_dir", type=str, default="comparision_plots")
-    parser.add_argument('--models',  nargs='+', default= ['Combined', 'NewGudkova']) 
+    parser.add_argument('--models',  nargs='+', default= ['Combined', 'NewGudkova', 'TAYAK']) 
     parser.add_argument("--depths", nargs="+", default=[15, 35, 55])
     args = parser.parse_args()
 
