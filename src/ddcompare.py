@@ -13,57 +13,61 @@ from pathlib import Path
 from obspy.core import UTCDateTime
 import utils 
 import os 
+from itertools import product
+import sys 
+from collections import defaultdict
 
 
-def distplot(events, args):
-    
-    model = TauPyModel(model=str(EXP_DIR / 'models' / args.model))
-    p_ls, s_ls, dist_ls, diff_ls = [], [], [], []
-    fig, ax = plt.subplots()
-    colors = sns.color_palette("tab10")
-    distances_dict = {}
+def depth_dist_all(args): 
+    args.depths = list(map(float, args.depths))
+    combs = list(product(args.models, args.depths))
 
-    for dist in np.arange(15, 50, 0.1):
-        arrivals = model.get_ray_paths(phase_list=["P", "S"], source_depth_in_km=args.depth, distance_in_degree=dist)
-        try:
-            p_arrival = arrivals[0].time
-            p_ls.append(p_arrival)
-            s_arrival = arrivals[1].time
-            s_ls.append(s_arrival)
-            dist_ls.append(dist)
-        except:
-            pass
-            
-        diff = [s - p for s, p in zip(s_ls, p_ls)]
-        
-    
-    ax.scatter(dist_ls, diff, s=0.1, c='k')
-    ax.set_title(f'{args.model}')
-    ax.set_xlabel('Distance (degrees)')
-    ax.set_ylabel('S-P Arrival (sec)')
-    
-    ymin, ymax = 0, 300 
-    counter = 0 
-    # print(dist_ls)
-    for event, values in events.items():
-        time = UTCDateTime(values['end']) - UTCDateTime(values['start'])
-        diff_index, actual_diff = min(enumerate(diff), key=lambda x: abs(x[1]-time))
-        actual_dist = round(dist_ls[diff_index], 1)
-        logger.info(f'Diff index: {diff_index} Actual: {actual_diff}')
-        logger.info(f'Distance of {event}: {dist_ls[diff_index]}')
-        distances_dict[event] = dist_ls[diff_index]
-        ax.vlines(dist_ls[diff_index], ymin, ymax, alpha=0.7, color=colors[counter], linestyles='dashed', label=event)
-        counter += 1 
-        # ax.text(dist_ls[diff_index]-1, 0, (event, actual_dist), size='x-small', rotation=90)
+    for event, values in events.items(): 
+        print("*"*20)
+        print(f'Event: {event}')
+        fig, ax = plt.subplots()
+        plot_dict = defaultdict(list)  #  Structure: {'model': [(depth1, dist1), (depth2, dist2)...]}
 
-    plt.legend()
-    filename = EXP_DIR / 'plots' / 'distance_plots' / f'{args.model}_depth{args.depth}_distances.png'
-    fig.savefig(filename)
+        for model, depth in combs: 
+            print(f"Running for: {model}, {depth}")
+            model_tm = TauPyModel(model=str(EXP_DIR / 'models' / model))
 
-    filename = EXP_DIR / 'events' / f'{args.model}_depth{args.depth}_distances.pkl'
-    utils.save_file(filename, distances_dict)
+            p_ls, s_ls, dist_ls, diff_ls = [], [], [], []
 
-    return diff, dist_ls
+
+            for dist in np.arange(15, 50, 0.1):
+                arrivals = model_tm.get_ray_paths(phase_list=["P", "S"], source_depth_in_km=depth, distance_in_degree=dist)
+                try:
+                    p_arrival = arrivals[0].time
+                    p_ls.append(p_arrival)
+                    s_arrival = arrivals[1].time
+                    s_ls.append(s_arrival)
+                    dist_ls.append(dist)
+                except:
+                    pass
+                    
+                diff = [s - p for s, p in zip(s_ls, p_ls)]
+                
+
+            time = UTCDateTime(values['end']) - UTCDateTime(values['start'])
+            diff_index, actual_diff = min(enumerate(diff), key=lambda x: abs(x[1]-time))
+            plot_dict[model].append((depth, dist_ls[diff_index]))
+            # ax.scatter(depth, dist_ls[diff_index], c=colors[args.models.index(model)], label=f'{model}')
+
+        for m, v in plot_dict.items(): 
+            v = np.array(v) 
+            depths = v[:, 0] 
+            dists = v[:, 1]
+            ax.scatter(depths, dists, label=m)
+
+        ax.legend()
+        ax.set_title(f'Event: {event}')
+        ax.set_xlabel('Depths')
+        ax.set_ylabel('Distance')
+
+        filename = EXP_DIR / 'plots' / 'distance_plots' / f'{event}_dist_depth_compare.png'
+        fig.savefig(filename)
+        plt.close(fig)
 
 
 if __name__ == '__main__': 
@@ -80,6 +84,7 @@ if __name__ == '__main__':
                                                     "start": "2019-07-26T12:19:18", 
                                                     "end": "2019-07-26T12:22:05" 
                                                 },
+
                                             "S0173a":
                                                 {	
                                                     "start": "2019-05-23T02:22:59", 
@@ -88,8 +93,9 @@ if __name__ == '__main__':
                                             }
 	
                             """)
-    parser.add_argument("--model", required=True, type=str, help="Name of TauP model to use for plotting")
-    parser.add_argument("--depth", required=True, type=float, help="Source Depth (km)")
+    parser.add_argument("--models", default=['Combined', 'TAYAK', 'Gudkova', 'NewGudkova'], nargs='+', help="Name of TauP model to use for plotting")
+    parser.add_argument("--depths", default=[15, 25, 35, 45, 55],  nargs='+', help="Source Depth (km)")
+
     args = parser.parse_args()
 
     # Plot settings 
@@ -110,4 +116,5 @@ if __name__ == '__main__':
     logger.info(f"{args.__dict__}")
     os.makedirs(EXP_DIR / "plots" / 'distance_plots', exist_ok=True)
 
-    distplot(events, args)
+    depth_dist_all(args)
+    

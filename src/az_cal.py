@@ -158,22 +158,24 @@ def calculate_baz(events, args):
         colors = np.where(np.in1d(angles, sol_indices), 'orange', 'b')
 
         ax1[0].scatter(angles, energies, alpha=alphas, s=sizes, c=colors) 
-        ax1[0].hlines(tol_level, np.min(angles), np.max(angles), alpha=0.5, color='k', linestyles='dashed', label='Tolerance Level')
-        ax1[0].vlines(min_angle, np.min(energies), np.max(energies), alpha=0.7, color='r', linestyles='dashed', label='Cal min energy')
+        ax1[0].hlines(tol_level, np.min(angles), np.max(angles), alpha=0.8, color='k', linestyles='dashed', label='Tolerance Level')
+        ax1[0].hlines(energies[min_angle], np.min(angles), np.max(angles), alpha=0.9, color='r', linestyles=(0, (5, 1)), label='Cal min energy')
 
         ax1[1].scatter(sol_indices, energies[sol_indices], c='orange', s=10, alpha=0.8, label='Angles < tol')
         ax1[1].scatter(min_angle, min_energy, c='r', marker='^', s=80, alpha=0.8, label=f'Cal angle: {min_angle}')
         if energy_reported: 
-            ax1[0].vlines(angle_reported, np.min(energies), np.max(energies), alpha=0.7, color='g', linestyles='dashed', label='Reported min energy')
-            ax1[1].scatter(angle_reported, energy_reported, marker='^', c='g', alpha=0.8, s=80, label=f'Reported angle: {angle_reported}')
+            ax1[0].hlines(energies[angle_reported], np.min(angles), np.max(angles), alpha=0.7, color='g', linestyles='dashed', label='Reported min energy')
+            ax1[1].scatter(angle_reported, energy_reported, marker='^', c='g', alpha=0.7, s=80, label=f'Reported angle: {angle_reported}')
 
         ax1[1].set_xlabel('Angles')
         ax1[0].set_ylabel('Energy')
         ax1[1].set_ylabel('Energy')
-        ax1[0].legend()
+        ax1[0].legend(loc='upper right')
         ax1[1].legend()
         filename3 = EXP_DIR / 'plots' / 'wave_plots' / f'{args.model}_depth{args.depth}_{event}_energies.png'
         fig1.savefig(filename3, bbox_inches='tight')
+
+
         # Rotate the s-wave and plot 
         hhe = stS2[0].data
         hhn = stS2[1].data
