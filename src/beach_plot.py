@@ -22,7 +22,7 @@ import sys
 import os 
 
 
-def alphabeach(event, df, n=50, c='b'):
+def alphabeach(event, df, n, norm_const, c='b'):
     fig1, ax1 = plt.subplots(subplot_kw={'aspect': 'equal'})
     fig2, ax2 = plt.subplots(subplot_kw={'aspect': 'equal'})
     fig3, ax3 = plt.subplots(subplot_kw={'aspect': 'equal'})
@@ -41,7 +41,7 @@ def alphabeach(event, df, n=50, c='b'):
     # Gaussian normalization 
     sigma = max_mis 
     # pref = 1/(sigma*np.sqrt(2*np.pi)) 
-    df['Normalized'] = np.exp(-(np.square(df['Misfit']))/(2*np.square(sigma)))
+    df['Normalized'] = norm_const*np.exp(-(np.square(df['Misfit']))/(2*np.square(sigma)))
 
     # Plot complete solution set, with n figures in each plot 
     counter = 1
@@ -97,11 +97,18 @@ def alphabeach(event, df, n=50, c='b'):
 
 if __name__ == '__main__': 
     parser = argparse.ArgumentParser()
-    # Model Parameters -
+
+    # Model Parameters 
     parser.add_argument("--model", required=True, type=str, help="Model name used for distance calculation")
     parser.add_argument("--depth", required=True, type=float, help="Source Depth (km) used for distance calculation")
     parser.add_argument("--exp_dir", required=True, type=str)
 
+    # Plotting params 
+    parser.add_argument("--n", default=50, type=int, 
+                        help="Max number of beach balls per plot (param is only used in complete solution set)")
+    parser.add_argument("--norm_const", default=0.6, type=float, 
+                        help="Normalization constant used to control transparency of the beach balls")
+    
     args = parser.parse_args()
 
     EXP_DIR = EXP_PATH / args.exp_dir 
@@ -127,6 +134,6 @@ if __name__ == '__main__':
         filename = EXP_DIR / 'events' / f'{event}' /  f'{event}_{args.model}_depth{args.depth}.csv'
         if filename.exists():
             df = pd.read_csv(filename)
-            alphabeach(event, df)
+            alphabeach(event, df, args.n, args.norm_const)
         else: 
             warnings.warn(f"File not found: {filename}")
