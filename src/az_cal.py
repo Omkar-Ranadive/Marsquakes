@@ -136,6 +136,22 @@ def calculate_baz(events, args):
         energies = np.array(energies) 
         sol_indices = np.where(energies < tol_level)[0]
         logger.info(f"Solution angles < noise tolerance level: {sol_indices}")
+
+        # Split sol indices at discontinous points 
+        discontinuity_index = np.where(np.diff(sol_indices) != 1)[0] + 1
+        sol_splits = np.split(sol_indices, discontinuity_index)
+
+        # Find std and range of splitted arrays 
+        for split in sol_splits: 
+            logger.info("*"*5)
+            logger.info(f"Solution angles < noise tolerance level: {split}")
+            split_mean = np.mean(split)
+            split_std = np.round(np.std(split), 4)
+            split_med = np.median(split)
+            split_range = np.max(split)-np.min(split)
+            logger.info(f'STD: {split_std}, Mean: {split_mean}, Median: {split_med}, Range: {split_range}')
+            logger.info("*"*5)
+
         min_angle = np.argmin(energies)
         min_energy = energies[min_angle]
         baz_angles[event] = min_angle 
@@ -191,8 +207,8 @@ def calculate_baz(events, args):
             ax2[i].plot(times, stS2[i].data, label=labels[i], c='k')
             ax2[i].vlines(stS[i].stats.starttime, ymin, ymax, alpha=0.7, color='r', linestyles='dashed')
             ax2[i].vlines(stS[i].stats.endtime, ymin, ymax, alpha=0.7, color='r', linestyles='dashed')
+            ax2[i].legend(loc='upper left')
 
-        # ax.legend()
         filename4 = EXP_DIR / 'plots' / 'wave_plots' / f'{args.model}_depth{args.depth}_{event}_swave_rotated_{rotation}.png'
         fig2.savefig(filename4, bbox_inches='tight')
 
