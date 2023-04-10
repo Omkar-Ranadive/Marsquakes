@@ -1,9 +1,5 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from obspy.core.trace import Trace, Stats
-from obspy.core.stream import Stream
-from obspy import UTCDateTime
-from obspy.clients.fdsn import Client
 import argparse
 from constants import EXP_PATH
 import json
@@ -15,49 +11,6 @@ from pathlib import Path
 import utils 
 import warnings 
 import os 
-
-
-def waveforms(start, end, args):
-    st = client.get_waveforms(args.net, args.sta, args.loc, ",".join(args.cl), start-args.adjtime, end+args.adjtime, attach_response=True)
-    st.detrend(type='simple')
-    st_disp = st.copy()
-    st_disp.remove_response(pre_filt=[0.006, 0.01, 8, 9.9], water_level=None, zero_mean=False, 
-                            taper=True, taper_fraction=0.01, output='DISP')
-    return st_disp
-
-
-def uvw2enz(st):
-    if len(st) != 3:
-       print('Stream does not contain 3 Traces')
-       return st
-    for trace in st:
-        head = trace.stats
-        channel = head.channel
-        if channel == 'BHU': U = trace.data
-        elif channel == 'BHV': V = trace.data
-        elif channel == 'BHW': W = trace.data
-        else:
-            print('Trace.channel is not BHU, BHV, or BHW')
-            return st
-
-    d = np.radians(-30)
-    aU = np.radians(135)
-    aV = np.radians(15)
-    aW = np.radians(255)
-
-    A = np.array([[np.cos(d)*np.sin(aU), np.cos(d)*np.cos(aU),-np.sin(d)],
-                  [np.cos(d)*np.sin(aV), np.cos(d)*np.cos(aV), -np.sin(d)],
-                  [np.cos(d)*np.sin(aW), np.cos(d)*np.cos(aW), -np.sin(d)]])
-
-    B = np.linalg.inv(A)
-    E,N,Z = np.dot(B,(U,V,W))
-
-    head.channel = 'BHE'; trE = Trace(data=E, header=head)
-    head.channel = 'BHN'; trN = Trace(data=N, header=head)
-    head.channel = 'BHZ'; trZ = Trace(data=Z, header=head)
-    stENZ = Stream(traces=[trE,trN,trZ])
-
-    return stENZ
 
 
 def rotate(c1,c2,a):
@@ -83,9 +36,12 @@ def calculate_baz(events, args):
         start = UTCDateTime(values['start'])
         end = UTCDateTime(values['end'])
 
-        st_uvw = waveforms(start, end, args)
+        st_uvw, inv = utils.get_waveforms(start, end, event, args)
         print(st_uvw)
-        st_z12 = uvw2enz(st_uvw)
+        st_uvw.detrend(type='simple')
+        st_uvw.remove_response(pre_filt=[0.006, 0.01, 8, 9.9], water_level=None, zero_mean=False, 
+                            taper=True, taper_fraction=0.01, output='DISP', inventory=inv)
+        st_z12 = utils.uvw2enz(st_uvw)
 
         stf = st_z12.copy()
         stf.filter('bandpass', freqmin=0.125, freqmax=1.0, corners=4, zerophase=True)
@@ -354,7 +310,10 @@ if __name__ == '__main__':
                         """)
     parser.add_argument("--adjtime", default=600, type=float, help="Retrieved waveform is of the duration start-adjtime, end+adjtime")
     parser.add_argument("--scale", default=200, type=float, help="Data gets multipled by 1/scale before back azimuth calculation")
+    parser.add_argument("--save", default=True, action=argparse.BooleanOptionalAction, 
+                        help="If true, it would save the waveforms / load from saved data if it already exists")
     
+
     # Model Parameters
     parser.add_argument("--model", required=True, type=str, help="Model name used for distance calculation")
     parser.add_argument("--depth", required=True, type=float, help="Source Depth (km) used for distance calculation")
@@ -376,7 +335,6 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    client = Client(args.client)
     EXP_DIR = EXP_PATH / args.exp_dir 
 
     logging.basicConfig(level=logging.INFO, filename=str(EXP_DIR / 'info.log'), format='%(message)s', filemode='a')

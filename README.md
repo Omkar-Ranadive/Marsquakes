@@ -2,8 +2,10 @@
 This repository can be used to analyze seismic events on Mars. Following analyses can be performed - 
 * Generating rayplots 
 * Calculating seismic event distances, generating distance plots 
-* Calculating back-azimuth, azimuth 
+* Calculating back-azimuth, azimuth, generating energy plots 
+* Generating filter plots 
 * Fault guessing 
+* Generating beach ball plots 
 
 ## Installation 
 * Download [Miniconda](https://docs.conda.io/en/latest/miniconda.html) for your OS 
