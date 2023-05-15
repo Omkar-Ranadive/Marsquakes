@@ -3,7 +3,7 @@ This repository can be used to analyze seismic events on Mars. Following analyse
 * Generating rayplots 
 * Calculating seismic event distances, generating distance plots 
 * Calculating back-azimuth, azimuth, generating energy plots 
-* Generating filter plots 
+* Generating frequency filter plots 
 * Fault guessing 
 * Generating beach ball plots 
 
@@ -106,6 +106,10 @@ python dist_cal.py --exp_dir results --file events_info.txt --model NewGudkova -
 ```
 * The distances get stored in a dictionary under experiments/exp_dir/events and are also written in info.log file. 
 * Distance plots can be found in experiments/exp_dir/plots/distance_plots
+* Additionally, distances across different models and depths can be compared using ddcompare.py as follows: 
+```
+python ddcompare.py --exp_dir results --file events_info.txt --depths 15 25 35 45 50 55
+```
 
 ### 3. Calculating back-azimuth and azimuth 
 * az_cal.py - This file can be used to calculate the back-azimuth, azimuth, and lat/lon of the events. 
@@ -179,7 +183,7 @@ python fault_guess.py --exp_dir results --file events_amps.txt --model NewGudkov
 ```
 * .csv file containing the misfit value for different strike, dip, range combinations is saved under experiments/exp_dir/events/event_name for each event. 
 
-5. Beach ball plots 
+### 5. Beach ball plots 
 * beach_plot.py - The .csv files generated using fault_guess.py can be used to create beach ball plots of the solution set. 
 * Example execution - 
 ```
@@ -187,5 +191,10 @@ python beach_plot.py --exp_dir results --model NewGudkova --depth 35
 ```
 * The beach ball plots are saved under experiments/exp_dir/plots/beach_plots directory. 
 
+### 6. Frequency filter plots 
+* Events can be filtered across different frequency bands as follows: 
+```
+python filter_plots.py --exp_dir results --file events_info.txt --scales 80000 5000 80000 80000 5000 2000 1000
+```
 ## References 
 This repository is an updated and modular version of [Sita Marsquakes 2020](https://github.com/maddysita-17/Sita_Marsquakes2020) repository. 
