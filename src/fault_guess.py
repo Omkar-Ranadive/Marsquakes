@@ -124,7 +124,7 @@ def getplanes(xm):
     return 3*tr,clvd, m0,(azt,dpt),(azn,dpn),(azp, dpp), (st1,dip1,rake1), (st2,dip2,rake2)
 
 
-def Rpattern(faults, azimuth, incidence_angles):
+def Rpattern(faults, azimuth, take_off_angles):
     """
     Calculate predicted amplitudes of P, SV, and SH waves.
     IN: fault = [strike, dip, rake]
@@ -133,15 +133,15 @@ def Rpattern(faults, azimuth, incidence_angles):
              (between 0 and 90) w.r.t. a horizontal that is 90 degrees clockwise from strike,
              and rake is measured positive upwards (counterclockwise)
         azimuth: azimuth with which ray path leaves source (clockwise from N)
-        incidence_angles = [i, j]
+        take_off_angles = [i, j]
               i = angle between P ray path & vertical in the source model layer
               j = angle between S ray path & vertical in the source model layer
     OUT: Amplitudes for P, SV, and SH waves
     P as measured on L (~Z) component, SV measured on Q (~R) component, and SH measured on T component.
-    All input is in degrees. 
+    All input is in degrees.
     (c) 2020 Suzan van der Lee
     """
-
+    
     strikes, dips, rakes = faults[:, 0], faults[:, 1], faults[:, 2]
     a = azimuth; rela = strikes - azimuth
     sinlam = np.sin(np.radians(rakes))
@@ -160,8 +160,8 @@ def Rpattern(faults, azimuth, incidence_angles):
     pL = sinlam*sind*cosd*sin2rela + coslam*sind*cos2rela
     qL = -coslam*cosd*sinrela + sinlam*cos2d*cosrela
 
-    iP = np.radians(incidence_angles[0])
-    jS = np.radians(incidence_angles[1])
+    iP = np.radians(take_off_angles[0])
+    jS = np.radians(take_off_angles[1])
 
     AP = sR*(3*np.cos(iP)**2 - 1) - qR*np.sin(2*iP) - pR*np.sin(iP)**2
     ASV = 1.5*sR*np.sin(2*jS) + qR*np.cos(2*jS) + 0.5*pR*np.sin(2*jS)
