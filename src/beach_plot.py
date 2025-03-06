@@ -57,7 +57,7 @@ def alphabeach(event, df, n, norm_const, c='b'):
         ax1.add_collection(collection1)
 
         # Collection2 is for superimposed solutions 
-        collection2 = beach(f, xy=(0, 0), facecolor=c, alpha=rows.Normalized)
+        collection2 = beach(f, xy=(0, 0), facecolor=c, alpha=rows.Normalized, zorder=rows.Normalized)
         ax2.add_collection(collection2)
 
         # Plot set of n solutions per plot 
@@ -106,7 +106,7 @@ if __name__ == '__main__':
     # Plotting params 
     parser.add_argument("--n", default=50, type=int, 
                         help="Max number of beach balls per plot (param is only used in complete solution set)")
-    parser.add_argument("--norm_const", default=0.6, type=float, 
+    parser.add_argument("--norm_const", default=0.3, type=float, 
                         help="Normalization constant used to control transparency of the beach balls")
     
     args = parser.parse_args()
